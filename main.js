@@ -25,7 +25,6 @@ const categoryEmojis = {
   'art': '🖼️',
   'botanical': '🌿',
   'speed-champions': '🏎️',
-  // Yeni eklenenler:
   'ideas': '💡',
   'brickheadz': '🗿',
   'disney': '🏰',
@@ -36,7 +35,7 @@ const categoryEmojis = {
   'dreamzzz': '💤',
   'sonic': '🦔',
   'animal-crossing': '🍃',
-  'space': '🚀' // 2024-2026 arası tüm temalarda ortak kullanılan bir etiket
+  'space': '🚀'
 };
 
 const categoryLabels = {

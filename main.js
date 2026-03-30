@@ -1,14 +1,28 @@
 import './style.css'
+import { auth, db, googleProvider } from './firebase.js'
+import { 
+  onAuthStateChanged, 
+  signInWithPopup, 
+  signOut 
+} from "firebase/auth"
+import { 
+  collection, 
+  addDoc, 
+  deleteDoc, 
+  doc, 
+  updateDoc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  setDoc,
+  serverTimestamp
+} from "firebase/firestore"
 
 // ===== REBRICKABLE API KEY =====
 const REBRICKABLE_API_KEY = '707249e899b50ed2cd5d0512bf5863ff';
 
+let userSets = [];
 let currentUser = null;
-const USERS_KEY = 'legoTrackerUsers';
-
-function getStorageKey() {
-  return `legoSets_${currentUser}`;
-}
 
 const categoryEmojis = {
   'duplo': '🧒',
@@ -30,7 +44,7 @@ const categoryEmojis = {
   'disney': '🏰',
   'minecraft': '⛏️',
   'super-mario': '🍄',
-  'jurassic-world': '🦖',
+  'jurassic-world': 'REX',
   'minifigures': '🕴️',
   'dreamzzz': '💤',
   'sonic': '🦔',
@@ -39,31 +53,13 @@ const categoryEmojis = {
 };
 
 const categoryLabels = {
-  'duplo': 'Duplo',
-  'city': 'City',
-  'creator-3in1': 'Creator 3in1',
-  'technic': 'Technic',
-  'friends': 'Friends',
-  'ninjago': 'Ninjago',
-  'star-wars': 'Star Wars',
-  'marvel-dc': 'Marvel/DC',
-  'classic': 'Classic',
-  'harry-potter': 'HP/Disney/MC',
-  'icons-architecture': 'Icons/Architecture',
-  'art': 'Art',
-  'botanical': 'Botanical',
-  'speed-champions': 'Speed Champions',
-  'ideas': 'Ideas',
-  'brickheadz': 'BrickHeadz',
-  'disney': 'Disney',
-  'minecraft': 'Minecraft',
-  'super-mario': 'Super Mario',
-  'jurassic-world': 'Jurassic World',
-  'minifigures': 'Minifigures',
-  'dreamzzz': 'DREAMZzz',
-  'sonic': 'Sonic',
-  'animal-crossing': 'Animal Crossing',
-  'space': 'Space'
+  'duplo': 'Duplo', 'city': 'City', 'creator-3in1': 'Creator 3in1', 'technic': 'Technic',
+  'friends': 'Friends', 'ninjago': 'Ninjago', 'star-wars': 'Star Wars', 'marvel-dc': 'Marvel/DC',
+  'classic': 'Classic', 'harry-potter': 'HP/Disney/MC', 'icons-architecture': 'Icons/Architecture',
+  'art': 'Art', 'botanical': 'Botanical', 'speed-champions': 'Speed Champions', 'ideas': 'Ideas',
+  'brickheadz': 'BrickHeadz', 'disney': 'Disney', 'minecraft': 'Minecraft', 'super-mario': 'Super Mario',
+  'jurassic-world': 'Jurassic World', 'minifigures': 'Minifigures', 'dreamzzz': 'DREAMZzz',
+  'sonic': 'Sonic', 'animal-crossing': 'Animal Crossing', 'space': 'Space'
 };
 
 const statusLabels = {
@@ -73,66 +69,18 @@ const statusLabels = {
 };
 
 const categoryColors = [
-  '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
-  '#9966FF', '#FF9F40', '#E74C3C', '#2ECC71',
+  '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#E74C3C', '#2ECC71',
   '#3498DB', '#F39C12', '#8E44AD'
 ];
-
-const mockSets = [
-  {
-    id: 1,
-    name: 'Millennium Falcon',
-    category: 'star-wars',
-    pieceCount: 7541,
-    status: 'completed',
-    imageUrl: 'https://cdn.rebrickable.com/media/sets/75192-1/30881.jpg',
-    dateAdded: new Date('2025-01-15').getTime()
-  },
-  {
-    id: 2,
-    name: 'Orchid',
-    category: 'botanical',
-    pieceCount: 608,
-    status: 'completed',
-    imageUrl: 'https://cdn.rebrickable.com/media/sets/10311-1/148060.jpg',
-    dateAdded: new Date('2025-03-10').getTime()
-  },
-  {
-    id: 3,
-    name: 'Eiffel Tower',
-    category: 'icons-architecture',
-    pieceCount: 10001,
-    status: 'not-started',
-    imageUrl: 'https://cdn.rebrickable.com/media/sets/10307-1/112417.jpg',
-    dateAdded: new Date('2025-05-12').getTime()
-  }
-];
-
-function initializeStorage() {
-  if (!localStorage.getItem(getStorageKey())) {
-    localStorage.setItem(getStorageKey(), JSON.stringify(mockSets))
-  }
-}
-
-function getSets() {
-  if (!currentUser) return [];
-  const data = localStorage.getItem(getStorageKey())
-  return data ? JSON.parse(data) : []
-}
-
-function saveSets(sets) {
-  if (!currentUser) return;
-  localStorage.setItem(getStorageKey(), JSON.stringify(sets))
-}
 
 // ===== CHART.JS =====
 let categoryChart = null;
 
 function updateChart() {
-  const sets = getSets();
+  const sets = userSets;
   const canvas = document.getElementById('category-chart');
+  if (!canvas) return;
 
-  // Count sets per category
   const categoryCount = {};
   sets.forEach(set => {
     const cat = set.category || 'other';
@@ -146,10 +94,7 @@ function updateChart() {
   const isDark = document.documentElement.dataset.theme === 'dark';
   const textColor = isDark ? '#e0e0e0' : '#333333';
 
-  if (categoryChart) {
-    categoryChart.destroy();
-  }
-
+  if (categoryChart) categoryChart.destroy();
   if (sets.length === 0) {
     canvas.style.display = 'none';
     return;
@@ -172,11 +117,7 @@ function updateChart() {
       plugins: {
         legend: {
           position: 'bottom',
-          labels: {
-            color: textColor,
-            padding: 15,
-            font: { size: 13 }
-          }
+          labels: { color: textColor, padding: 15, font: { size: 13 } }
         }
       }
     }
@@ -185,38 +126,24 @@ function updateChart() {
 
 // ===== DASHBOARD =====
 function updateDashboard() {
-  const sets = getSets()
+  const sets = userSets;
+  document.getElementById('total-sets').textContent = sets.length;
+  const totalPieces = sets.reduce((sum, set) => sum + (set.pieceCount || 0), 0);
+  document.getElementById('total-pieces').textContent = totalPieces.toLocaleString();
 
-  document.getElementById('total-sets').textContent = sets.length
+  const recentlyAdded = sets.length > 0 ? sets[0] : null;
+  const recentlyAddedElement = document.getElementById('recently-added');
+  recentlyAddedElement.textContent = recentlyAdded ? recentlyAdded.name : '-';
 
-  const totalPieces = sets.reduce((sum, set) => sum + set.pieceCount, 0)
-  document.getElementById('total-pieces').textContent = totalPieces.toLocaleString()
-
-  const recentlyAdded = sets.length > 0
-    ? sets.reduce((latest, set) => set.dateAdded > latest.dateAdded ? set : latest)
-    : null
-
-  const recentlyAddedElement = document.getElementById('recently-added')
-  if (recentlyAdded) {
-    recentlyAddedElement.textContent = recentlyAdded.name
-  } else {
-    recentlyAddedElement.textContent = '-'
-  }
-
-  const completed = sets.filter(s => s.status === 'completed').length;
-  const inProgress = sets.filter(s => s.status === 'in-progress').length;
-  const notStarted = sets.filter(s => s.status === 'not-started').length;
-
-  document.getElementById('status-completed').textContent = completed;
-  document.getElementById('status-in-progress').textContent = inProgress;
-  document.getElementById('status-not-started').textContent = notStarted;
+  document.getElementById('status-completed').textContent = sets.filter(s => s.status === 'completed').length;
+  document.getElementById('status-in-progress').textContent = sets.filter(s => s.status === 'in-progress').length;
+  document.getElementById('status-not-started').textContent = sets.filter(s => s.status === 'not-started').length;
 
   updateChart();
 }
 
 // ===== IMAGE CACHE =====
 const IMG_CACHE_KEY = 'legoImgCache';
-
 function isImageCached(url) {
   try {
     const cache = JSON.parse(localStorage.getItem(IMG_CACHE_KEY) || '[]');
@@ -229,17 +156,13 @@ function markImageCached(url) {
     const cache = JSON.parse(localStorage.getItem(IMG_CACHE_KEY) || '[]');
     if (!cache.includes(url)) {
       cache.push(url);
-      // Keep cache list manageable (max 200 entries)
       if (cache.length > 200) cache.shift();
       localStorage.setItem(IMG_CACHE_KEY, JSON.stringify(cache));
     }
-  } catch (e) {
-    localStorage.removeItem(IMG_CACHE_KEY);
-  }
+  } catch (e) { localStorage.removeItem(IMG_CACHE_KEY); }
 }
 
 function loadAndCacheImage(imgEl, originalUrl) {
-  // Set a timeout - if image hasn't loaded in 10 seconds, use fallback
   const timeout = setTimeout(() => {
     if (!imgEl.complete || imgEl.naturalWidth === 0) {
       imgEl.src = 'https://images.pexels.com/photos/3961954/pexels-photo-3961954.jpeg?w=200';
@@ -299,43 +222,25 @@ function renderCollectionGrid(sets) {
   `;
   }).join('');
 
-  // Attach image loading/caching for non-cached images
   grid.querySelectorAll('img[data-original-url]').forEach(img => {
     const originalUrl = img.dataset.originalUrl;
-    if (!isImageCached(originalUrl)) {
-      loadAndCacheImage(img, originalUrl);
-    } else {
-      // Already cached by browser, just ensure onload fires
-      img.onload = function() {
-        this.style.opacity = '1';
-        this.parentElement.classList.remove('card-image-skeleton');
-      };
-      img.onerror = function() {
-        this.style.opacity = '1';
-        this.src = 'https://images.pexels.com/photos/3961954/pexels-photo-3961954.jpeg?w=200';
-        this.parentElement.classList.remove('card-image-skeleton');
-      };
+    if (!isImageCached(originalUrl)) loadAndCacheImage(img, originalUrl);
+    else {
+      img.onload = function() { this.style.opacity = '1'; this.parentElement.classList.remove('card-image-skeleton'); };
+      img.onerror = function() { this.style.opacity = '1'; this.src = 'https://images.pexels.com/photos/3961954/pexels-photo-3961954.jpeg?w=200'; this.parentElement.classList.remove('card-image-skeleton'); };
     }
   });
 }
 
 function filterAndRenderCollection() {
-  if (!currentUser) return;
   const searchTerm = document.getElementById('search-input').value.toLowerCase()
   const activeFilter = document.querySelector('.filter-btn.active')
   const selectedCategory = activeFilter ? activeFilter.dataset.filter : 'all'
   const selectedPieceCount = document.getElementById('piece-count-filter').value;
 
-  let sets = getSets()
-
-  if (selectedCategory !== 'all') {
-    sets = sets.filter(set => set.category === selectedCategory)
-  }
-
-  if (searchTerm) {
-    sets = sets.filter(set => set.name.toLowerCase().includes(searchTerm))
-  }
-
+  let sets = [...userSets];
+  if (selectedCategory !== 'all') sets = sets.filter(set => set.category === selectedCategory);
+  if (searchTerm) sets = sets.filter(set => set.name.toLowerCase().includes(searchTerm));
   if (selectedPieceCount !== 'all') {
     sets = sets.filter(set => {
       if (selectedPieceCount === 'under-200') return set.pieceCount < 200;
@@ -345,37 +250,23 @@ function filterAndRenderCollection() {
       return true;
     });
   }
-
-  sets.sort((a, b) => b.dateAdded - a.dateAdded)
   renderCollectionGrid(sets)
 }
 
 // ===== NAVIGATION =====
 function initializeNavigation() {
   const navLinks = document.querySelectorAll('.nav-link')
-
   navLinks.forEach(link => {
     if (link.id === 'logout-btn') return;
-
     link.addEventListener('click', (e) => {
-      e.preventDefault()
-
-      const sectionId = link.dataset.section
-
-      document.querySelectorAll('.section').forEach(section => {
-        section.classList.remove('active')
-      })
-      document.getElementById(sectionId).classList.add('active')
-
-      navLinks.forEach(l => {
-        if (l.id !== 'logout-btn') l.classList.remove('active')
-      })
-      link.classList.add('active')
-
-      // Save active section for page reload
+      e.preventDefault();
+      const sectionId = link.dataset.section;
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      document.getElementById(sectionId).classList.add('active');
+      navLinks.forEach(l => { if (l.id !== 'logout-btn') l.classList.remove('active'); });
+      link.classList.add('active');
       sessionStorage.setItem('legoTrackerActiveSection', sectionId);
-
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     })
   })
 }
@@ -384,14 +275,7 @@ function restoreActiveSection() {
   const savedSection = sessionStorage.getItem('legoTrackerActiveSection');
   if (savedSection) {
     const link = document.querySelector(`[data-section="${savedSection}"]`);
-    if (link) {
-      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-      document.getElementById(savedSection).classList.add('active');
-      document.querySelectorAll('.nav-link').forEach(l => {
-        if (l.id !== 'logout-btn') l.classList.remove('active');
-      });
-      link.classList.add('active');
-    }
+    if (link) { link.click(); }
   }
 }
 
@@ -406,9 +290,9 @@ function initializeCollectionFilters() {
 
   filterButtons.forEach(button => {
     button.addEventListener('click', () => {
-      filterButtons.forEach(btn => btn.classList.remove('active'))
-      button.classList.add('active')
-      filterAndRenderCollection()
+      filterButtons.forEach(btn => btn.classList.remove('active'));
+      button.classList.add('active');
+      filterAndRenderCollection();
     })
   })
 }
@@ -425,137 +309,110 @@ function initializeCardActions() {
   grid.addEventListener('click', (e) => {
     const editBtn = e.target.closest('.edit-btn');
     const deleteBtn = e.target.closest('.delete-btn');
-
-    if (editBtn) {
-      const id = parseInt(editBtn.dataset.id);
-      openEditModal(id);
-    } else if (deleteBtn) {
-      const id = parseInt(deleteBtn.dataset.id);
-      deleteSet(id);
-    }
+    if (editBtn) openEditModal(editBtn.dataset.id);
+    else if (deleteBtn) deleteSet(deleteBtn.dataset.id);
   });
 
-  closeBtn.addEventListener('click', () => {
-    modal.style.display = 'none';
-    editingSetId = null;
-  });
+  closeBtn.addEventListener('click', () => { modal.style.display = 'none'; editingSetId = null; });
 
-  editForm.addEventListener('submit', (e) => {
+  editForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const sets = getSets();
-    const index = sets.findIndex(s => s.id === editingSetId);
-    if (index === -1) return;
+    if (!currentUser || !editingSetId) return;
 
     const fileInput = document.getElementById('edit-image');
     const file = fileInput.files[0];
 
-    const saveUpdatedSet = (imgUrl) => {
-      sets[index] = {
-        ...sets[index],
-        name: document.getElementById('edit-name').value,
-        pieceCount: parseInt(document.getElementById('edit-pieces').value),
-        category: document.getElementById('edit-category').value,
-        status: document.getElementById('edit-status').value,
-        imageUrl: imgUrl
-      };
-
-      saveSets(sets);
-      modal.style.display = 'none';
-      editingSetId = null;
-      editForm.reset();
-      updateDashboard();
-      filterAndRenderCollection();
+    const updateFirestoreSet = async (imgUrl) => {
+      try {
+        const setRef = doc(db, `users/${currentUser.uid}/sets`, editingSetId);
+        await updateDoc(setRef, {
+          name: document.getElementById('edit-name').value,
+          pieceCount: parseInt(document.getElementById('edit-pieces').value),
+          category: document.getElementById('edit-category').value,
+          status: document.getElementById('edit-status').value,
+          imageUrl: imgUrl
+        });
+        modal.style.display = 'none';
+        editingSetId = null;
+        editForm.reset();
+      } catch (err) { console.error("Update error:", err); }
     };
 
     if (file) {
       const reader = new FileReader();
-      reader.onload = (event) => saveUpdatedSet(event.target.result);
+      reader.onload = (event) => updateFirestoreSet(event.target.result);
       reader.readAsDataURL(file);
     } else {
-      saveUpdatedSet(sets[index].imageUrl);
+      const existingSet = userSets.find(s => s.id === editingSetId);
+      updateFirestoreSet(existingSet.imageUrl);
     }
   });
 }
 
 function deleteSet(id) {
   if (confirm('Are you sure you want to delete this Lego set?')) {
-    let sets = getSets();
-    sets = sets.filter(s => s.id !== id);
-    saveSets(sets);
-    updateDashboard();
-    filterAndRenderCollection();
+    const setRef = doc(db, `users/${currentUser.uid}/sets`, id);
+    deleteDoc(setRef).catch(err => console.error("Delete error:", err));
   }
 }
 
 function openEditModal(id) {
-  const sets = getSets();
-  const set = sets.find(s => s.id === id);
+  const set = userSets.find(s => s.id === id);
   if (!set) return;
-
   editingSetId = id;
   document.getElementById('edit-name').value = set.name;
   document.getElementById('edit-pieces').value = set.pieceCount;
   document.getElementById('edit-category').value = set.category;
   document.getElementById('edit-status').value = set.status || 'not-started';
-
   document.getElementById('edit-modal').style.display = 'flex';
 }
 
 // ===== ADD SET FORM =====
-let apiImageUrl = null; // Store image URL from API
+let apiImageUrl = null;
 
 function initializeAddSetForm() {
   const form = document.getElementById('add-set-form')
   const successMessage = document.getElementById('success-message')
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault()
+    if (!currentUser) return;
 
     const formData = new FormData(form)
+    const newSetName = formData.get('set-name').trim().toLowerCase();
+    
+    // Duplicate check
+    const isDuplicate = userSets.some(s => s.name.toLowerCase() === newSetName);
+    if (isDuplicate) {
+      alert('⚠️ This set is already in your collection!');
+      return;
+    }
+
     const fileInput = document.getElementById('image-upload');
     const file = fileInput.files[0];
 
-    const createSet = (imgUrl) => {
-      const newSet = {
-        id: Date.now(),
-        name: formData.get('set-name'),
-        pieceCount: parseInt(formData.get('piece-count')),
-        category: formData.get('category'),
-        status: formData.get('status') || 'not-started',
-        imageUrl: imgUrl,
-        dateAdded: Date.now()
-      }
-
-      const sets = getSets()
-      sets.push(newSet)
-      saveSets(sets)
-
-      form.reset()
-      apiImageUrl = null; // Clear saved API image
-
-      updateDashboard()
-      filterAndRenderCollection()
-
-      successMessage.style.display = 'block'
-      setTimeout(() => {
-        successMessage.style.display = 'none'
-      }, 3000)
-
-      const collectionLink = document.querySelector('[data-section="collection"]')
-      collectionLink.click()
+    const createSetInFirestore = async (imgUrl) => {
+      try {
+        await addDoc(collection(db, `users/${currentUser.uid}/sets`), {
+          name: formData.get('set-name'),
+          pieceCount: parseInt(formData.get('piece-count')),
+          category: formData.get('category'),
+          status: formData.get('status') || 'not-started',
+          imageUrl: imgUrl,
+          dateAdded: serverTimestamp()
+        });
+        form.reset(); apiImageUrl = null;
+        successMessage.style.display = 'block';
+        setTimeout(() => successMessage.style.display = 'none', 3000);
+      } catch (err) { console.error("Add error:", err); }
     };
 
     if (file) {
       const reader = new FileReader();
-      reader.onload = (event) => {
-        createSet(event.target.result);
-      };
+      reader.onload = (event) => createSetInFirestore(event.target.result);
       reader.readAsDataURL(file);
-    } else if (apiImageUrl) {
-      createSet(apiImageUrl);
-    } else {
-      createSet('https://images.pexels.com/photos/3961954/pexels-photo-3961954.jpeg?w=200');
-    }
+    } else if (apiImageUrl) { createSetInFirestore(apiImageUrl); }
+    else { createSetInFirestore('https://images.pexels.com/photos/3961954/pexels-photo-3961954.jpeg?w=200'); }
   })
 }
 
@@ -567,238 +424,111 @@ function initializeApiAutoFill() {
 
   btn.addEventListener('click', async () => {
     let setNum = input.value.trim();
-    if (!setNum) {
-      statusEl.textContent = '⚠️ Please enter a set number (e.g. 75192-1)';
-      statusEl.style.color = '#ffc107';
-      return;
-    }
+    if (!setNum) { statusEl.textContent = '⚠️ Please enter a set number'; return; }
+    if (!setNum.includes('-')) setNum += '-1';
 
-    // Auto-append "-1" if user didn't include a dash
-    if (!setNum.includes('-')) {
-      setNum = setNum + '-1';
-    }
-
-    btn.disabled = true;
-    btn.textContent = 'Fetching...';
-    statusEl.textContent = '🔄 Searching Rebrickable database...';
-    statusEl.style.color = '#ccc';
+    btn.disabled = true; btn.textContent = 'Fetching...'; statusEl.textContent = '🔄 Searching...';
 
     try {
       const response = await fetch(`https://rebrickable.com/api/v3/lego/sets/${setNum}/`, {
-        headers: {
-          'Authorization': `key ${REBRICKABLE_API_KEY}`
-        }
+        headers: { 'Authorization': `key ${REBRICKABLE_API_KEY}` }
       });
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('Set not found! Check the set number.');
-        }
-        throw new Error(`API error: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error('Set not found!');
+      
       const data = await response.json();
-
-      // Fill form fields
       document.getElementById('set-name').value = data.name || '';
       document.getElementById('piece-count').value = data.num_parts || '';
-
-      // Try to detect category from theme
-      if (data.theme_id) {
-        detectCategory(data.theme_id);
-      }
-
-      // Store image for later use
-      if (data.set_img_url) {
-        apiImageUrl = data.set_img_url;
-      }
-
-      statusEl.textContent = `✅ Found: ${data.name} (${data.num_parts} pieces, Year: ${data.year})`;
+      if (data.set_img_url) apiImageUrl = data.set_img_url;
+      statusEl.textContent = `✅ Found: ${data.name}`;
       statusEl.style.color = '#28a745';
-
-    } catch (err) {
-      statusEl.textContent = `❌ ${err.message}`;
-      statusEl.style.color = '#dc3545';
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Auto-Fill';
-    }
-  });
-
-  // Allow Enter key in the input
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      btn.click();
-    }
+    } catch (err) { statusEl.textContent = `❌ ${err.message}`; statusEl.style.color = '#dc3545'; }
+    finally { btn.disabled = false; btn.textContent = 'Auto-Fill'; }
   });
 }
 
-// Map common Rebrickable theme IDs to our categories
-const themeIdMap = {
-  // Star Wars
-  158: 'star-wars', 171: 'star-wars', 172: 'star-wars', 434: 'star-wars', 503: 'star-wars',
-  // Technic
-  1: 'technic',
-  // City
-  52: 'city', 53: 'city',
-  // Ninjago
-  577: 'ninjago',
-  // Friends
-  494: 'friends',
-  // Creator (3-in-1)
-  22: 'creator-3in1',
-  // Duplo
-  504: 'duplo', 10: 'duplo',
-  // Harry Potter / Disney / Minecraft
-  246: 'harry-potter', 601: 'harry-potter', 497: 'harry-potter',
-  // Marvel / DC
-  696: 'marvel-dc', 697: 'marvel-dc', 607: 'marvel-dc',
-  // Icons / Architecture
-  252: 'icons-architecture', 578: 'icons-architecture', 721: 'icons-architecture',
-  // Classic
-  621: 'classic',
-  // Art
-  709: 'art',
-  // Botanical
-  769: 'botanical',
-  // Speed Champions
-  601: 'speed-champions'
-};
-
-function detectCategory(themeId) {
-  const category = themeIdMap[themeId];
-  if (category) {
-    document.getElementById('category').value = category;
-  }
-}
-
-// ===== DARK MODE =====
+// ===== THEME =====
 function initializeThemeToggle() {
   const toggleBtn = document.getElementById('theme-toggle');
   const savedTheme = localStorage.getItem('legoTrackerTheme') || 'light';
-
-  // Apply saved theme on load
   document.documentElement.dataset.theme = savedTheme;
   toggleBtn.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
 
   toggleBtn.addEventListener('click', () => {
-    const current = document.documentElement.dataset.theme;
-    const next = current === 'dark' ? 'light' : 'dark';
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
     toggleBtn.textContent = next === 'dark' ? '☀️' : '🌙';
     localStorage.setItem('legoTrackerTheme', next);
-
-    // Re-render chart with new theme colors
-    if (currentUser) {
-      updateChart();
-    }
+    updateChart();
   });
 }
 
 // ===== AUTH =====
 function initializeAuth() {
-  const loginForm = document.getElementById('login-form');
-  const registerForm = document.getElementById('register-form');
-  const showRegisterLink = document.getElementById('show-register');
-  const showLoginLink = document.getElementById('show-login');
+  const googleBtn = document.getElementById('google-login-btn');
   const logoutBtn = document.getElementById('logout-btn');
 
-  showRegisterLink.addEventListener('click', (e) => {
-    e.preventDefault();
-    loginForm.style.display = 'none';
-    registerForm.style.display = 'block';
-  });
-
-  showLoginLink.addEventListener('click', (e) => {
-    e.preventDefault();
-    registerForm.style.display = 'none';
-    loginForm.style.display = 'block';
-  });
-
-  loginForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const username = document.getElementById('login-username').value.trim();
-    const password = document.getElementById('login-password').value;
-    const errorEl = document.getElementById('login-error');
-
-    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '{}');
-    if (users[username] && users[username] === password) {
-      handleLoginSuccess(username);
-      loginForm.reset();
-      errorEl.style.display = 'none';
-    } else {
-      errorEl.textContent = 'Invalid username or password!';
-      errorEl.style.display = 'block';
-    }
-  });
-
-  registerForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const username = document.getElementById('register-username').value.trim();
-    const password = document.getElementById('register-password').value;
-    const errorEl = document.getElementById('register-error');
-
-    if (username.length < 3) {
-      errorEl.textContent = 'Username must be at least 3 characters!';
-      errorEl.style.display = 'block';
-      return;
-    }
-
-    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '{}');
-    if (users[username]) {
-      errorEl.textContent = 'This username is already taken!';
-      errorEl.style.display = 'block';
-    } else {
-      users[username] = password;
-      localStorage.setItem(USERS_KEY, JSON.stringify(users));
-      handleLoginSuccess(username);
-      registerForm.reset();
-      errorEl.style.display = 'none';
-    }
-  });
+  if (googleBtn) {
+    googleBtn.addEventListener('click', async () => {
+      try {
+        const result = await signInWithPopup(auth, googleProvider);
+        await setDoc(doc(db, "users", result.user.uid), {
+          username: result.user.displayName,
+          email: result.user.email,
+          lastLogin: serverTimestamp()
+        }, { merge: true });
+        localStorage.setItem('legoTrackerLoggedIn', 'true');
+      } catch (err) {
+        console.error("Login Error:", err);
+      }
+    });
+  }
 
   logoutBtn.addEventListener('click', (e) => {
     e.preventDefault();
-    currentUser = null;
-    sessionStorage.removeItem('legoTrackerCurrentUser');
-    sessionStorage.removeItem('legoTrackerActiveSection');
-    document.getElementById('landing-page').style.display = 'flex';
-    document.getElementById('main-navbar').style.display = 'none';
-    document.getElementById('main-content').style.display = 'none';
-
-    document.querySelector('[data-section="dashboard"]').click();
+    localStorage.removeItem('legoTrackerLoggedIn');
+    signOut(auth);
   });
 }
 
-function handleLoginSuccess(username) {
-  currentUser = username;
-  sessionStorage.setItem('legoTrackerCurrentUser', username);
-  document.getElementById('landing-page').style.display = 'none';
-  document.getElementById('main-navbar').style.display = 'block';
-  document.getElementById('main-content').style.display = 'flex';
-  document.getElementById('main-content').style.flexDirection = 'column';
+// ===== REAL-TIME SYNC =====
+let unsubscribeSets = null;
+function setupRealtimeSync(user) {
+  if (unsubscribeSets) unsubscribeSets();
+  const q = query(collection(db, `users/${user.uid}/sets`), orderBy("dateAdded", "desc"));
+  unsubscribeSets = onSnapshot(q, (snapshot) => {
+    userSets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    updateDashboard(); filterAndRenderCollection();
+  });
+}
 
-  initializeStorage();
-  updateDashboard();
-  filterAndRenderCollection();
-  restoreActiveSection();
+function handleAuthChange(user) {
+  currentUser = user;
+  const landingPage = document.getElementById('landing-page');
+  const navbar = document.getElementById('main-navbar');
+  const content = document.getElementById('main-content');
+
+  if (user) {
+    localStorage.setItem('legoTrackerLoggedIn', 'true');
+    landingPage.style.display = 'none';
+    navbar.style.display = 'block';
+    content.style.display = 'flex';
+    content.style.flexDirection = 'column';
+    setupRealtimeSync(user);
+    restoreActiveSection();
+  } else {
+    localStorage.removeItem('legoTrackerLoggedIn');
+    landingPage.style.display = 'flex';
+    navbar.style.display = 'none';
+    content.style.display = 'none';
+    userSets = [];
+    if (unsubscribeSets) unsubscribeSets();
+  }
+
+  const earlyStyle = document.getElementById('early-auth-style');
+  if (earlyStyle) earlyStyle.remove();
 }
 
 // ===== INIT =====
-
-// Instant session check - runs before DOM is fully ready to prevent flash
-(function earlySessionCheck() {
-  const savedUser = sessionStorage.getItem('legoTrackerCurrentUser');
-  if (savedUser) {
-    // Hide landing page immediately via inline style injection
-    const style = document.createElement('style');
-    style.id = 'early-auth-style';
-    style.textContent = '#landing-page{display:none!important}#main-navbar{display:block!important}#main-content{display:flex!important;flex-direction:column}';
-    document.head.appendChild(style);
-  }
-})();
-
 function init() {
   initializeThemeToggle()
   initializeNavigation()
@@ -807,26 +537,8 @@ function init() {
   initializeCardActions()
   initializeAuth()
   initializeApiAutoFill()
-
-  // Remove early style override
-  const earlyStyle = document.getElementById('early-auth-style');
-  if (earlyStyle) earlyStyle.remove();
-
-  // Restore session on page reload
-  const savedUser = sessionStorage.getItem('legoTrackerCurrentUser');
-  if (savedUser) {
-    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '{}');
-    if (users[savedUser]) {
-      handleLoginSuccess(savedUser);
-    } else {
-      sessionStorage.removeItem('legoTrackerCurrentUser');
-      sessionStorage.removeItem('legoTrackerActiveSection');
-    }
-  }
+  onAuthStateChanged(auth, handleAuthChange);
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init)
-} else {
-  init()
-}
+if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); }
+else { init(); }

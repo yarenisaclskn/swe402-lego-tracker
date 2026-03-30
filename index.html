@@ -7,6 +7,34 @@
   <title>LegoTracker - Your Lego Collection Manager</title>
   <link rel="stylesheet" href="/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script>
+    // Early session check to prevent UI flicker and section jumping
+    (function() {
+      const savedLogin = localStorage.getItem('legoTrackerLoggedIn');
+      const savedSection = sessionStorage.getItem('legoTrackerActiveSection');
+      
+      if (savedLogin === 'true') {
+        const style = document.createElement('style');
+        style.id = 'early-auth-style';
+        
+        // Hide landing, show main content
+        let styleContent = '#landing-page{display:none!important}#main-navbar{display:block!important}#main-content{display:flex!important;flex-direction:column}';
+        
+        // If we were on a specific section other than dashboard, hide dashboard and show that section immediately
+        if (savedSection && savedSection !== 'dashboard') {
+          styleContent += `.section{display:none!important}#${savedSection}{display:block!important}`;
+          
+          // Match the exact style.css design for navbar flicker
+          styleContent += `.nav-link{color:var(--text-primary)!important;font-weight:500!important;border-bottom:none!important}`;
+          styleContent += `.nav-link[data-section="${savedSection}"]{color:var(--lego-red)!important;font-weight:700!important;border-bottom:3px solid var(--lego-red)!important}`;
+        }
+        
+        style.textContent = styleContent;
+        document.head.appendChild(style);
+      }
+    })();
+  </script>
+
 </head>
 
 <body>
@@ -42,38 +70,17 @@
       <p class="landing-subtitle">Track your Legos, complete new collections.</p>
 
       <div class="auth-container">
-        <!-- Login Form -->
-        <form id="login-form" class="auth-form active-auth">
-          <h2>Login</h2>
-          <div id="login-error" class="error-message" style="display: none;"></div>
-          <div class="form-group">
-            <label for="login-username">Username</label>
-            <input type="text" id="login-username" required placeholder="Your username">
-          </div>
-          <div class="form-group">
-            <label for="login-password">Password</label>
-            <input type="password" id="login-password" required placeholder="••••••••">
-          </div>
-          <button type="submit" class="btn btn-primary">Login</button>
-          <p class="auth-switch">Don't have an account? <a href="#" id="show-register">Register</a></p>
-        </form>
-
-        <!-- Register Form -->
-        <form id="register-form" class="auth-form" style="display: none;">
-          <h2>Register</h2>
-          <div id="register-error" class="error-message" style="display: none;"></div>
-          <div class="form-group">
-            <label for="register-username">Username</label>
-            <input type="text" id="register-username" required placeholder="Choose a username">
-          </div>
-          <div class="form-group">
-            <label for="register-password">Password</label>
-            <input type="password" id="register-password" required placeholder="••••••••">
-          </div>
-          <button type="submit" class="btn btn-primary" style="background-color: var(--lego-blue);">Register</button>
-          <p class="auth-switch">Already have an account? <a href="#" id="show-login">Login</a></p>
-        </form>
+        <!-- Google Login Section -->
+        <div id="google-auth-section" class="auth-form active-auth" style="text-align: center; padding: 2rem;">
+          <h2>Welcome to LegoTracker</h2>
+          <p style="margin-bottom: 2rem; color: var(--lego-gray);">Sign in to manage your collection from any device.</p>
+          <button id="google-login-btn" class="btn btn-primary" style="display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; max-width: 300px; margin: 0 auto; background-color: #fff; color: #757575; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" style="width: 20px;">
+            Continue with Google
+          </button>
+        </div>
       </div>
+
     </div>
   </section>
 

@@ -8,27 +8,26 @@
   <link rel="stylesheet" href="/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script>
-    // Early session check to prevent UI flicker and section jumping
-    (function() {
+    (function () {
       const savedLogin = localStorage.getItem('legoTrackerLoggedIn');
       const savedSection = sessionStorage.getItem('legoTrackerActiveSection');
-      
+
       if (savedLogin === 'true') {
         const style = document.createElement('style');
         style.id = 'early-auth-style';
-        
+
         // Hide landing, show main content
         let styleContent = '#landing-page{display:none!important}#main-navbar{display:block!important}#main-content{display:flex!important;flex-direction:column}';
-        
+
         // If we were on a specific section other than dashboard, hide dashboard and show that section immediately
         if (savedSection && savedSection !== 'dashboard') {
           styleContent += `.section{display:none!important}#${savedSection}{display:block!important}`;
-          
+
           // Match the exact style.css design for navbar flicker
           styleContent += `.nav-link{color:var(--text-primary)!important;font-weight:500!important;border-bottom:none!important}`;
           styleContent += `.nav-link[data-section="${savedSection}"]{color:var(--lego-red)!important;font-weight:700!important;border-bottom:3px solid var(--lego-red)!important}`;
         }
-        
+
         style.textContent = styleContent;
         document.head.appendChild(style);
       }
@@ -73,9 +72,12 @@
         <!-- Google Login Section -->
         <div id="google-auth-section" class="auth-form active-auth" style="text-align: center; padding: 2rem;">
           <h2>Welcome to LegoTracker</h2>
-          <p style="margin-bottom: 2rem; color: var(--lego-gray);">Sign in to manage your collection from any device.</p>
-          <button id="google-login-btn" class="btn btn-primary" style="display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; max-width: 300px; margin: 0 auto; background-color: #fff; color: #757575; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" style="width: 20px;">
+          <p style="margin-bottom: 2rem; color: var(--lego-gray);">Sign in to manage your collection from any device.
+          </p>
+          <button id="google-login-btn" class="btn btn-primary"
+            style="display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; max-width: 300px; margin: 0 auto; background-color: #fff; color: #757575; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"
+              style="width: 20px;">
             Continue with Google
           </button>
         </div>
@@ -298,7 +300,7 @@
   </main>
 
   <footer class="footer">
-    <p>&copy; 2024 LegoTracker. Build and organize your collection.</p>
+    <p>&copy; 2026 LegoTracker. Build and organize your collection.</p>
   </footer>
 
   <!-- Edit Modal -->
